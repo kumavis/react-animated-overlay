@@ -137,15 +137,12 @@ function AppContent() {
     return (
       <div
         key={index}
+        className="quadrant"
         style={{
           flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
           border: "2px solid #ddd",
           position: "relative",
           minHeight: "50vh",
-          transition: "all 0.3s ease-in-out",
         }}
       >
         <div style={{ textAlign: "center" }}>
