@@ -11,40 +11,62 @@ interface Target {
   nextMoveTime: number;
 }
 
-function AppContent({ getFollowerColor }: { getFollowerColor: (targetId: string) => string }) {
+// Predefined color palette for targets
+const COLOR_PALETTE = [
+  { primary: "#cde4ff", secondary: "#4a90e2" }, // Blue
+  { primary: "#ffcdcd", secondary: "#e24a4a" }, // Red
+  { primary: "#cdffcd", secondary: "#4ae24a" }, // Green
+  { primary: "#ffcdff", secondary: "#e24ae2" }, // Purple
+  { primary: "#ffe4cd", secondary: "#e2904a" }, // Orange
+  { primary: "#e4cdff", secondary: "#904ae2" }, // Violet
+  { primary: "#cdffe4", secondary: "#4ae290" }, // Mint
+  { primary: "#ffffe4", secondary: "#e2e24a" }, // Yellow
+];
+
+function AppContent() {
   const [targets, setTargets] = useState<Target[]>(() => {
     const now = Date.now();
     return [
       { 
-        id: "A", 
-        primaryColor: "#cde4ff", 
-        secondaryColor: "#4a90e2",
+        id: "1", 
+        primaryColor: COLOR_PALETTE[0].primary, 
+        secondaryColor: COLOR_PALETTE[0].secondary,
         quadrant: Math.floor(Math.random() * 4), 
         nextMoveTime: now + Math.random() * 3000 
       },
       { 
-        id: "B", 
-        primaryColor: "#ffcdcd", 
-        secondaryColor: "#e24a4a",
-        quadrant: Math.floor(Math.random() * 4), 
-        nextMoveTime: now + Math.random() * 3000 
-      },
-      { 
-        id: "C", 
-        primaryColor: "#cdffcd", 
-        secondaryColor: "#4ae24a",
-        quadrant: Math.floor(Math.random() * 4), 
-        nextMoveTime: now + Math.random() * 3000 
-      },
-      { 
-        id: "D", 
-        primaryColor: "#ffcdff", 
-        secondaryColor: "#e24ae2",
+        id: "2", 
+        primaryColor: COLOR_PALETTE[1].primary, 
+        secondaryColor: COLOR_PALETTE[1].secondary,
         quadrant: Math.floor(Math.random() * 4), 
         nextMoveTime: now + Math.random() * 3000 
       },
     ];
   });
+
+  // Add a new target
+  const addTarget = () => {
+    const now = Date.now();
+    const newId = (targets.length + 1).toString();
+    const colorIndex = targets.length % COLOR_PALETTE.length;
+    
+    const newTarget: Target = {
+      id: newId,
+      primaryColor: COLOR_PALETTE[colorIndex].primary,
+      secondaryColor: COLOR_PALETTE[colorIndex].secondary,
+      quadrant: Math.floor(Math.random() * 4),
+      nextMoveTime: now + Math.random() * 3000
+    };
+    
+    setTargets(prev => [...prev, newTarget]);
+  };
+
+  // Remove the last target
+  const removeTarget = () => {
+    if (targets.length > 1) { // Keep at least one target
+      setTargets(prev => prev.slice(0, -1));
+    }
+  };
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -112,8 +134,25 @@ function AppContent({ getFollowerColor }: { getFollowerColor: (targetId: string)
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Multiple Moving Targets Demo</h1>
+        <h1>Dynamic Moving Targets Demo</h1>
         <p>Targets move to different quadrants at random intervals. Each target has its own follower!</p>
+        
+        <div className="target-controls">
+          <button 
+            onClick={addTarget}
+            className="control-button add-button"
+            disabled={targets.length >= COLOR_PALETTE.length}
+          >
+            + Add Target ({targets.length}/{COLOR_PALETTE.length})
+          </button>
+          <button 
+            onClick={removeTarget}
+            className="control-button remove-button"
+            disabled={targets.length <= 1}
+          >
+            - Remove Target
+          </button>
+        </div>
       </header>
       
       <main className="quadrant-container">
@@ -158,18 +197,14 @@ function AppContent({ getFollowerColor }: { getFollowerColor: (targetId: string)
 function App() {
   // Function to get the follower color for a specific target
   const getFollowerColor = (targetId: string) => {
-    const targetColors = {
-      "A": "#cde4ff", // Target A primary color (light blue)
-      "B": "#ffcdcd", // Target B primary color (light red)
-      "C": "#cdffcd", // Target C primary color (light green)
-      "D": "#ffcdff", // Target D primary color (light purple)
-    };
-    return targetColors[targetId as keyof typeof targetColors] || "#e11";
+    const targetIndex = parseInt(targetId) - 1;
+    const colorIndex = targetIndex % COLOR_PALETTE.length;
+    return COLOR_PALETTE[colorIndex].primary;
   };
   
   return (
     <FollowerProvider followerColor={getFollowerColor}>
-      <AppContent getFollowerColor={getFollowerColor} />
+      <AppContent />
     </FollowerProvider>
   );
 }

@@ -23,6 +23,52 @@
   opacity: 0.9;
 }
 
+.target-controls {
+  margin-top: 20px;
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  align-items: center;
+}
+
+.control-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease-in-out;
+  min-width: 140px;
+}
+
+.add-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.add-button:hover:not(:disabled) {
+  background-color: #45a049;
+  transform: translateY(-2px);
+}
+
+.remove-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.remove-button:hover:not(:disabled) {
+  background-color: #da190b;
+  transform: translateY(-2px);
+}
+
+.control-button:disabled {
+  background-color: #cccccc;
+  color: #666666;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .quadrant-container {
   flex: 1;
   display: flex;
@@ -81,14 +127,4 @@ body > div[style*="position: fixed"] {
   100% {
     box-shadow: 0 6px 16px rgba(0,0,0,0.2), 0 0 20px rgba(0,0,0,0.1);
   }
-}
-
-/* Target hover effects */
-.target-hover {
-  transition: all 0.3s ease-in-out;
-}
-
-.target-hover:hover {
-  transform: scale(1.05);
-  animation: targetGlow 2s ease-in-out infinite alternate;
 }

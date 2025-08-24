@@ -12,10 +12,10 @@ interface FollowerProviderProps {
 }
 
 // Individual Follower component that manages its own floating instance
-function Follower({ id, targetElement, getFollowerColor }: {
+const Follower = function Follower({ id, getFollowerColor, getTargetElement }: {
   id: string;
-  targetElement: HTMLElement;
   getFollowerColor: (targetId: string) => string;
+  getTargetElement: (id: string) => HTMLElement | undefined;
 }) {
   const { refs, floatingStyles } = useFloating({
     strategy: "fixed",
@@ -34,12 +34,13 @@ function Follower({ id, targetElement, getFollowerColor }: {
     ],
   });
 
-  // Set the reference element when the target element changes
+  // Get the current target element and update the reference
   useEffect(() => {
+    const targetElement = getTargetElement(id);
     if (targetElement) {
       refs.setReference(targetElement);
     }
-  }, [refs, targetElement]);
+  }, [refs, id, getTargetElement]);
 
   const followerColor = getFollowerColor(id);
 
@@ -58,7 +59,7 @@ function Follower({ id, targetElement, getFollowerColor }: {
       }}
     />
   );
-}
+};
 
 export function FollowerProvider({ children, followerColor = "#e11" }: FollowerProviderProps) {
   const [targetElements, setTargetElements] = useState<Map<string, HTMLElement>>(new Map());
@@ -84,21 +85,27 @@ export function FollowerProvider({ children, followerColor = "#e11" }: FollowerP
     return followerColor;
   }, [followerColor]);
 
-  // Render followers for each target dynamically
-  const followers = useMemo(() => 
-    Array.from(targetElements.entries()).map(([id, element]) => (
-      <Follower
-        key={`follower-${id}`}
-        id={id}
-        targetElement={element}
-        getFollowerColor={getFollowerColor}
-      />
-    )), [targetElements, getFollowerColor]);
+  // Function to get target element by ID
+  const getTargetElement = useCallback((id: string) => {
+    return targetElements.get(id);
+  }, [targetElements]);
 
   return (
     <FollowerCtx.Provider value={setReference}>
       {children}
-      {followers.map(follower => createPortal(follower, document.body))}
+      {createPortal(
+        <>
+          {Array.from(targetElements.keys()).map(targetId => (
+            <Follower
+              key={`follower-${targetId}`}
+              id={targetId}
+              getFollowerColor={getFollowerColor}
+              getTargetElement={getTargetElement}
+            />
+          ))}
+        </>,
+        document.body
+      )}
     </FollowerCtx.Provider>
   );
 }
