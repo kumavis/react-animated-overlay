@@ -1,7 +1,8 @@
 {
-  "name": "animated-floater",
+  "name": "react-animated-overlay",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://kumavis.github.io/react-animated-overlay",
   "dependencies": {
     "@floating-ui/react": "^0.27.16",
     "@testing-library/dom": "^10.4.1",
