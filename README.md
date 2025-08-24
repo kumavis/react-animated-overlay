@@ -5,3 +5,5 @@ This system renders your actual content into an overlay layer, and renders a dis
 If the FollowTarget is rendered into another part of the DOM the content will respotion over the FollowTarget automatically.
 
 This is just a proof of concept.
+
+Demo is here https://kumavis.github.io/react-animated-overlay/
