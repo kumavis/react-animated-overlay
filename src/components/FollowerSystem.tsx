@@ -29,6 +29,7 @@ const Follower = ({ id, getFollowEntry }: {
   id: string;
   getFollowEntry: (id: string) => FollowerEntry | undefined;
 }) => {
+  const hasBeenPositioned = useRef(false);
   const { refs, floatingStyles } = useFloating({
     strategy: "fixed",
     placement: "bottom-start",
@@ -51,6 +52,14 @@ const Follower = ({ id, getFollowEntry }: {
     const { el: targetElement } = getFollowEntry(id) || {};
     if (targetElement) {
       refs.setReference(targetElement);
+      // Mark as positioned after the first reference is set
+      if (!hasBeenPositioned.current) {
+        // Use a small delay to ensure positioning is complete
+        const timer = setTimeout(() => {
+          hasBeenPositioned.current = true;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
     }
   }, [refs, id, getFollowEntry]);
 
@@ -62,7 +71,7 @@ const Follower = ({ id, getFollowEntry }: {
       ref={refs.setFloating}
       style={{
         ...floatingStyles,
-        transition: "all 0.3s ease-in-out",
+        transition: hasBeenPositioned.current ? "all 0.3s ease-in-out" : "none",
       }}
     >
       {followerContent}
