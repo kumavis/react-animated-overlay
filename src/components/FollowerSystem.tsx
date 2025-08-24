@@ -1,16 +1,26 @@
-import React, { createContext, useContext, useMemo, useCallback, useRef, useState, useEffect, Ref, ReactElement, CSSProperties } from "react";
+import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactElement, ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { useFloating, autoUpdate, size, offset } from "@floating-ui/react";
 
 
-type RenderFollowerFn = () => ReactElement | null;
-
 // Context that lets any Target register itself as a reference
-type SetRef = (id: string, el: HTMLElement | null, renderFollower: RenderFollowerFn) => void;
+type SetRef = (id: string, el: HTMLElement | null, followerContent: ReactNode) => void;
 const FollowerCtx = createContext<SetRef | null>(null);
 
+interface FollowTargetProps {
+  id: string;
+  renderTarget: (id: string, ref: Ref<HTMLDivElement>) => ReactElement | null;
+  children: ReactNode;
+}
+
+export function FollowTarget({ id, renderTarget, children }: FollowTargetProps) {
+  // Each target registers itself with the follower system
+  const followerRef = useFollowerTargetRef<HTMLDivElement>(id, children);
+  return renderTarget(id, followerRef);
+}
+
 interface FollowerProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
   followerColor?: string | ((targetId: string) => string);
 }
 
@@ -44,14 +54,7 @@ const Follower = ({ id, getFollowEntry }: {
     }
   }, [refs, id, getFollowEntry]);
 
-  // useEffect(() => {
-  //   console.log("mounting follower", id);
-  //   return () => {
-  //     console.log("unmounting follower", id);
-  //   }
-  // }, []);
-
-  const { renderFollower } = getFollowEntry(id) || {};
+  const { followerContent } = getFollowEntry(id) || {};
 
   return (
     <div
@@ -62,23 +65,23 @@ const Follower = ({ id, getFollowEntry }: {
         transition: "all 0.3s ease-in-out",
       }}
     >
-      {renderFollower && renderFollower()}
+      {followerContent}
     </div>
   )
 };
 
 type FollowerEntry = {
   el: HTMLElement | null;
-  renderFollower: RenderFollowerFn;
+  followerContent: ReactNode;
 }
 
 export function FollowerProvider({ children }: FollowerProviderProps) {
   const [targetElements, setTargetElements] = useState<Map<string, FollowerEntry>>(new Map());
 
   // Expose a setter that any target can call when it mounts/moves
-  const setReference = useCallback((id: string, el: HTMLElement | null, renderFollower: RenderFollowerFn) => {
+  const setReference = useCallback((id: string, el: HTMLElement | null, followerContent: ReactNode) => {
     if (el) {
-      setTargetElements(prev => new Map(prev).set(id, { el, renderFollower }));
+      setTargetElements(prev => new Map(prev).set(id, { el, followerContent }));
     } else {
       setTargetElements(prev => {
         const newMap = new Map(prev);
@@ -115,7 +118,7 @@ export function FollowerProvider({ children }: FollowerProviderProps) {
 // Hook for the moving Target component(s)
 export function useFollowerTargetRef<T extends HTMLElement>(
   id: string,
-  renderFollower: RenderFollowerFn
+  followerContent: React.ReactNode
 ) {
   const setReference = useContext(FollowerCtx);
   if (!setReference) throw new Error("Wrap your app with <FollowerProvider/>");
@@ -124,6 +127,6 @@ export function useFollowerTargetRef<T extends HTMLElement>(
   const last = useRef<T | null>(null);
   return useCallback((node: T | null) => {
     last.current = node;
-    setReference(id, node, renderFollower);
-  }, [setReference, id]);
+    setReference(id, node, followerContent);
+  }, [setReference, id, followerContent]);
 }

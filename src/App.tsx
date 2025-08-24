@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { FollowerProvider } from "./components/FollowerProvider";
-import { MovingTarget } from "./components/MovingTarget";
+import { FollowerProvider, FollowTarget } from "./components/FollowerSystem";
 import "./App.css";
 
 interface Target {
@@ -103,6 +102,35 @@ function AppContent() {
     };
   }, []);
 
+  // This is the target that will be followed by the follower
+  const renderTarget = (id: string, ref: React.Ref<HTMLDivElement>) => {
+    const target = targets.find(t => t.id === id);
+    if (!target) return null;
+    const { secondaryColor } = target;
+
+    return (
+      <div 
+        ref={ref}
+        style={{
+          width: 180, 
+          height: 90,
+          background: "transparent",
+          border: `3px solid ${secondaryColor}`,
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "14px",
+          fontWeight: "bold",
+          color: "#333",
+          boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+        }}
+      >
+        Target {id}
+      </div>
+    )
+  }
+
   const renderQuadrant = (index: number) => {
     const quadrantTargets = targets.filter(target => target.quadrant === index);
     
@@ -123,11 +151,21 @@ function AppContent() {
         <div style={{ textAlign: "center" }}>
           {quadrantTargets.map(target => (
             <div key={target.id} style={{ margin: "10px 0" }}>
-              <MovingTarget
-                id={target.id}
-                primaryColor={target.primaryColor}
-                secondaryColor={target.secondaryColor}
-              />
+              <FollowTarget id={target.id} renderTarget={renderTarget}>
+                {/* This content is rendered into the follower */}
+                <div
+                  style={{
+                    height: 96,
+                    boxSizing: "border-box",
+                    background: target.primaryColor,
+                    opacity: 0.8,
+                    borderRadius: 12,
+                    padding: 12,
+                    pointerEvents: "none",
+                    fontWeight: "bold",
+                  }}
+                >Follower {target.id}</div>
+              </FollowTarget>
             </div>
           ))}
         </div>
