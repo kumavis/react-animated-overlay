@@ -1,9 +1,12 @@
-import React, { createContext, useContext, useMemo, useCallback, useRef, useState, useEffect } from "react";
+import React, { createContext, useContext, useMemo, useCallback, useRef, useState, useEffect, Ref, ReactElement, CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useFloating, autoUpdate, size, offset } from "@floating-ui/react";
 
+
+type RenderFollowerFn = () => ReactElement | null;
+
 // Context that lets any Target register itself as a reference
-type SetRef = (id: string, el: HTMLElement | null) => void;
+type SetRef = (id: string, el: HTMLElement | null, renderFollower: RenderFollowerFn) => void;
 const FollowerCtx = createContext<SetRef | null>(null);
 
 interface FollowerProviderProps {
@@ -12,11 +15,10 @@ interface FollowerProviderProps {
 }
 
 // Individual Follower component that manages its own floating instance
-const Follower = function Follower({ id, getFollowerColor, getTargetElement }: {
+const Follower = ({ id, getFollowEntry }: {
   id: string;
-  getFollowerColor: (targetId: string) => string;
-  getTargetElement: (id: string) => HTMLElement | undefined;
-}) {
+  getFollowEntry: (id: string) => FollowerEntry | undefined;
+}) => {
   const { refs, floatingStyles } = useFloating({
     strategy: "fixed",
     placement: "bottom-start",
@@ -36,38 +38,47 @@ const Follower = function Follower({ id, getFollowerColor, getTargetElement }: {
 
   // Get the current target element and update the reference
   useEffect(() => {
-    const targetElement = getTargetElement(id);
+    const { el: targetElement } = getFollowEntry(id) || {};
     if (targetElement) {
       refs.setReference(targetElement);
     }
-  }, [refs, id, getTargetElement]);
+  }, [refs, id, getFollowEntry]);
 
-  const followerColor = getFollowerColor(id);
+  // useEffect(() => {
+  //   console.log("mounting follower", id);
+  //   return () => {
+  //     console.log("unmounting follower", id);
+  //   }
+  // }, []);
+
+  const { renderFollower } = getFollowEntry(id) || {};
 
   return (
     <div
+      key={id}
       ref={refs.setFloating}
-      className="follower"
       style={{
         ...floatingStyles,
-        pointerEvents: "none",
-        background: followerColor,
-        borderRadius: 12,
-        boxSizing: "border-box",
         transition: "all 0.3s ease-in-out",
-        opacity: 0.8,
       }}
-    />
-  );
+    >
+      {renderFollower && renderFollower()}
+    </div>
+  )
 };
 
-export function FollowerProvider({ children, followerColor = "#e11" }: FollowerProviderProps) {
-  const [targetElements, setTargetElements] = useState<Map<string, HTMLElement>>(new Map());
+type FollowerEntry = {
+  el: HTMLElement | null;
+  renderFollower: RenderFollowerFn;
+}
+
+export function FollowerProvider({ children }: FollowerProviderProps) {
+  const [targetElements, setTargetElements] = useState<Map<string, FollowerEntry>>(new Map());
 
   // Expose a setter that any target can call when it mounts/moves
-  const setReference = useCallback((id: string, el: HTMLElement | null) => {
+  const setReference = useCallback((id: string, el: HTMLElement | null, renderFollower: RenderFollowerFn) => {
     if (el) {
-      setTargetElements(prev => new Map(prev).set(id, el));
+      setTargetElements(prev => new Map(prev).set(id, { el, renderFollower }));
     } else {
       setTargetElements(prev => {
         const newMap = new Map(prev);
@@ -77,16 +88,8 @@ export function FollowerProvider({ children, followerColor = "#e11" }: FollowerP
     }
   }, []);
 
-  // Create a function to get follower color
-  const getFollowerColor = useCallback((targetId: string) => {
-    if (typeof followerColor === 'function') {
-      return followerColor(targetId);
-    }
-    return followerColor;
-  }, [followerColor]);
-
   // Function to get target element by ID
-  const getTargetElement = useCallback((id: string) => {
+  const getFollowEntry = useCallback((id: string) => {
     return targetElements.get(id);
   }, [targetElements]);
 
@@ -99,8 +102,7 @@ export function FollowerProvider({ children, followerColor = "#e11" }: FollowerP
             <Follower
               key={`follower-${targetId}`}
               id={targetId}
-              getFollowerColor={getFollowerColor}
-              getTargetElement={getTargetElement}
+              getFollowEntry={getFollowEntry}
             />
           ))}
         </>,
@@ -111,7 +113,10 @@ export function FollowerProvider({ children, followerColor = "#e11" }: FollowerP
 }
 
 // Hook for the moving Target component(s)
-export function useFollowerTargetRef<T extends HTMLElement>(id: string) {
+export function useFollowerTargetRef<T extends HTMLElement>(
+  id: string,
+  renderFollower: RenderFollowerFn
+) {
   const setReference = useContext(FollowerCtx);
   if (!setReference) throw new Error("Wrap your app with <FollowerProvider/>");
 
@@ -119,6 +124,6 @@ export function useFollowerTargetRef<T extends HTMLElement>(id: string) {
   const last = useRef<T | null>(null);
   return useCallback((node: T | null) => {
     last.current = node;
-    setReference(id, node);
+    setReference(id, node, renderFollower);
   }, [setReference, id]);
 }

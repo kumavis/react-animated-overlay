@@ -123,7 +123,11 @@ function AppContent() {
         <div style={{ textAlign: "center" }}>
           {quadrantTargets.map(target => (
             <div key={target.id} style={{ margin: "10px 0" }}>
-              <MovingTarget id={target.id} primaryColor={target.primaryColor} secondaryColor={target.secondaryColor} />
+              <MovingTarget
+                id={target.id}
+                primaryColor={target.primaryColor}
+                secondaryColor={target.secondaryColor}
+              />
             </div>
           ))}
         </div>
@@ -141,9 +145,8 @@ function AppContent() {
           <button 
             onClick={addTarget}
             className="control-button add-button"
-            disabled={targets.length >= COLOR_PALETTE.length}
           >
-            + Add Target ({targets.length}/{COLOR_PALETTE.length})
+            + Add Target ({targets.length})
           </button>
           <button 
             onClick={removeTarget}

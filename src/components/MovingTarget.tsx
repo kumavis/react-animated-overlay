@@ -1,4 +1,4 @@
-import React from "react";
+import React, { CSSProperties, useCallback } from "react";
 import { useFollowerTargetRef } from "./FollowerProvider";
 
 interface MovingTargetProps {
@@ -8,16 +8,33 @@ interface MovingTargetProps {
 }
 
 export function MovingTarget({ id, primaryColor, secondaryColor }: MovingTargetProps) {
+
+  const renderFollower = useCallback(() => {
+    return (
+      <div
+        style={{
+          height: 96,
+          boxSizing: "border-box",
+          background: primaryColor,
+          opacity: 0.8,
+          borderRadius: 12,
+          padding: 12,
+          pointerEvents: "none",
+          fontWeight: "bold",
+        }}
+      >Follower {id}</div>
+    )
+  }, [id, primaryColor]);
+
   // Each target registers itself with the follower system
-  const followerRef = useFollowerTargetRef<HTMLDivElement>(id);
+  const followerRef = useFollowerTargetRef<HTMLDivElement>(id, renderFollower);
   
   return (
     <div 
-      ref={followerRef} 
-      className="target-hover"
+      ref={followerRef}
       style={{
         width: 180, 
-        height: 90, 
+        height: 90,
         background: "transparent",
         border: `3px solid ${secondaryColor}`,
         borderRadius: 8,
@@ -28,7 +45,6 @@ export function MovingTarget({ id, primaryColor, secondaryColor }: MovingTargetP
         fontWeight: "bold",
         color: "#333",
         boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-        transition: "all 0.3s ease-in-out",
       }}
     >
       Target {id}
