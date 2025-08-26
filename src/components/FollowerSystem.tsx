@@ -1,141 +1,225 @@
-import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactElement, ReactNode, Ref } from "react";
+import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactNode, Ref, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useFloating, autoUpdate, size, offset } from "@floating-ui/react";
+import { useFloating, autoUpdate, offset, useTransitionStatus } from "@floating-ui/react";
 
+type FollowTarget = HTMLElement | null;
+type AltTarget = { x: number, y: number };
+type FollowerContent = ReactNode | null;
 
 // Context that lets any Target register itself as a reference
-type SetRef = (id: string, el: HTMLElement | null, followerContent: ReactNode) => void;
-const FollowerCtx = createContext<SetRef | null>(null);
+type SetRef = (id: string, el: HTMLElement | null) => void;
+type FollowerCtxType = {
+  setTargetReference: SetRef;
+  getFollowEntry: (id: string) => FollowTarget | undefined;
+  setFollowerContent: (id: string, content: ReactNode | null) => void;
+  getFollowerContent: (id: string) => ReactNode | null;
+  setAltTarget: (id: string, altTarget: AltTarget | undefined) => void;
+  getAltTarget: (id: string) => AltTarget | undefined;
+}
 
-interface FollowTargetProps {
+const FollowerCtx = createContext<FollowerCtxType | null>(null);
+
+interface FollowerProps {
   id: string;
-  renderTarget: (id: string, ref: Ref<HTMLDivElement>) => ReactElement | null;
+  getFollowTargetElement: (id: string) => FollowTarget | undefined;
+  altTarget?: AltTarget;
   children: ReactNode;
 }
+// Internal Follower component that follows a target element (or alternate target)
+const Follower = ({ id, getFollowTargetElement, altTarget, children }: FollowerProps) => {
+  const isInitiallyPositioned = useRef(false);
+  const followEntry = getFollowTargetElement(id);
+  const shouldBeVisible = !!followEntry;
+  const shouldAnimate = shouldBeVisible && isInitiallyPositioned.current;
 
-export function FollowTarget({ id, renderTarget, children }: FollowTargetProps) {
-  // Each target registers itself with the follower system
-  const followerRef = useFollowerTargetRef<HTMLDivElement>(id, children);
-  return renderTarget(id, followerRef);
-}
-
-interface FollowerProviderProps {
-  children: ReactNode;
-  followerColor?: string | ((targetId: string) => string);
-}
-
-// Individual Follower component that manages its own floating instance
-const Follower = ({ id, getFollowEntry }: {
-  id: string;
-  getFollowEntry: (id: string) => FollowerEntry | undefined;
-}) => {
-  const hasBeenPositioned = useRef(false);
-  const { refs, floatingStyles } = useFloating({
+  // Configure floating-ui system
+  const { refs, floatingStyles, context, elements } = useFloating({
+    open: shouldBeVisible,
     strategy: "fixed",
     placement: "bottom-start",
     whileElementsMounted: autoUpdate,
     middleware: [
+      // Adjust position
       offset(({ rects }) => ({ mainAxis: -rects.reference.height })),
-      size({
-        apply({ rects, elements }) {
-          Object.assign(elements.floating.style, {
-            width: `${rects.reference.width}px`,
-            height: `${rects.reference.height}px`,
-          });
-        },
-      }),
     ],
   });
+  const { status } = useTransitionStatus(context);
+  const isOpen = status === "open";
+
+  // After the first open, mark as initially positioned
+  useEffect(() => {
+    if (isInitiallyPositioned.current) return;
+    if (isOpen) {
+      isInitiallyPositioned.current = true;
+    }
+  }, [isOpen]);
+
+  // If altTarget is set, set a virtual element as the position reference
+  useEffect(() => {
+    if (altTarget) {
+      const virtualEl = {
+        getBoundingClientRect() {
+          return {
+            x: 0,
+            y: 0,
+            top: altTarget.y,
+            left: altTarget.x,
+            bottom: 0,
+            right: 0,
+            width: 0,
+            height: 0,
+          };
+        },
+      };
+      refs.setPositionReference(virtualEl);
+      return () => refs.setPositionReference(null);
+    } else {
+      const targetElement = getFollowTargetElement(id) || null;
+      refs.setReference(targetElement);
+    }
+  }, [altTarget, id, getFollowTargetElement]);
 
   // Get the current target element and update the reference
+  // TODO: This is likely unnecessary indirection and the reference could be set directly.
   useEffect(() => {
-    const { el: targetElement } = getFollowEntry(id) || {};
+    const targetElement = getFollowTargetElement(id);
     if (targetElement) {
       refs.setReference(targetElement);
-      // Mark as positioned after the first reference is set
-      if (!hasBeenPositioned.current) {
-        // Use a small delay to ensure positioning is complete
-        const timer = setTimeout(() => {
-          hasBeenPositioned.current = true;
-        }, 100);
-        return () => clearTimeout(timer);
-      }
     }
-  }, [refs, id, getFollowEntry]);
+  }, [refs, id, getFollowTargetElement]);
 
-  const { followerContent } = getFollowEntry(id) || {};
-
-  return (
+  return shouldBeVisible && (
     <div
       key={id}
       ref={refs.setFloating}
       style={{
         ...floatingStyles,
-        transition: hasBeenPositioned.current ? "all 0.3s ease-in-out" : "none",
+        transition: shouldAnimate ? "all 0.3s ease-in-out" : "none",
       }}
     >
-      {followerContent}
+      {children}
     </div>
-  )
+  ) || null;
 };
 
-type FollowerEntry = {
-  el: HTMLElement | null;
-  followerContent: ReactNode;
+interface FollowerProviderProps {
+  children: ReactNode;
 }
-
-export function FollowerProvider({ children }: FollowerProviderProps) {
-  const [targetElements, setTargetElements] = useState<Map<string, FollowerEntry>>(new Map());
-
-  // Expose a setter that any target can call when it mounts/moves
-  const setReference = useCallback((id: string, el: HTMLElement | null, followerContent: ReactNode) => {
-    if (el) {
-      setTargetElements(prev => new Map(prev).set(id, { el, followerContent }));
-    } else {
-      setTargetElements(prev => {
+// This component is the root of the follower system. It manages the target elements and their followers.
+export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) => {
+  // Stores the target elements. Observable, triggers changes.
+  const [followTargets, setFollowTargets] = useState<Map<string, FollowTarget>>(new Map());
+  const setTargetReference: SetRef = useCallback((id: string, followTargetElement: FollowTarget) => {
+    setFollowTargets(prev => {
+      // Remove Element
+      if (!followTargetElement) {
         const newMap = new Map(prev);
         newMap.delete(id);
         return newMap;
-      });
-    }
+      }
+      // New Element
+      const newMap = new Map(prev);
+      newMap.set(id, followTargetElement);
+      return newMap;
+    });
+  }, []);
+  const [altTargets, setAltTargets] = useState<Map<string, AltTarget>>(new Map());
+  const setAltTarget = useCallback((id: string, altTarget: AltTarget | undefined) => {
+    setAltTargets(prev => {
+      // No change
+      if (prev.get(id) === altTarget) {
+        return prev;
+      }
+      // Remove Element
+      if (!altTarget) {
+        const newMap = new Map(prev);
+        newMap.delete(id);
+        return newMap;
+      }
+      // New Element
+      const newMap = new Map(prev);
+      newMap.set(id, altTarget);
+      return newMap;
+    });
+  }, []);
+  const getAltTarget = useCallback((id: string) => {
+    return altTargets.get(id);
+  }, [altTargets]);
+
+  // Stores the Follower content ReactNode. Non-observable, doesn't trigger changes.
+  const followerContentRefs = useRef<Map<string, FollowerContent>>(new Map());
+  const getFollowerContext = useCallback((id: string) => {
+    return followerContentRefs.current.get(id);
+  }, []);
+  const setFollowerContext = useCallback((id: string, content: ReactNode | null) => {
+    followerContentRefs.current.set(id, content);
   }, []);
 
   // Function to get target element by ID
   const getFollowEntry = useCallback((id: string) => {
-    return targetElements.get(id);
-  }, [targetElements]);
+    return followTargets.get(id);
+  }, [followTargets]);
+
+  const contextValue = useMemo<FollowerCtxType>(() => ({
+    setTargetReference,
+    getFollowEntry,
+    setFollowerContent: setFollowerContext,
+    getFollowerContent: getFollowerContext,
+    setAltTarget,
+    getAltTarget,
+  }), [setTargetReference, getFollowEntry, setFollowerContext, getFollowerContext]);
 
   return (
-    <FollowerCtx.Provider value={setReference}>
+    <FollowerCtx.Provider value={contextValue}>
       {children}
       {createPortal(
-        <>
-          {Array.from(targetElements.keys()).map(targetId => (
-            <Follower
-              key={`follower-${targetId}`}
-              id={targetId}
-              getFollowEntry={getFollowEntry}
-            />
+        <div>
+          {Array.from(followerContentRefs.current.entries()).map(([id, content]) => (
+            <Follower key={id} id={id} getFollowTargetElement={getFollowEntry} altTarget={getAltTarget(id)}>
+              {content}
+            </Follower>
           ))}
-        </>,
-        document.body
+        </div>,
+        document.body,
       )}
     </FollowerCtx.Provider>
   );
 }
 
-// Hook for the moving Target component(s)
-export function useFollowerTargetRef<T extends HTMLElement>(
-  id: string,
-  followerContent: React.ReactNode
-) {
-  const setReference = useContext(FollowerCtx);
-  if (!setReference) throw new Error("Wrap your app with <FollowerProvider/>");
+// Internal hook for connecting the Targer and Follower components via the Provider
+const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: ReactNode, altTarget?: AltTarget) => {
+  const context = useContext(FollowerCtx);
+  if (!context) throw new Error("Wrap your app with <FollowerProvider/>");
+  const { setTargetReference, setFollowerContent: setFollowerContext, setAltTarget } = context;
+
+  // Send the children to get rendered in the portal
+  setFollowerContext(id, children);
+
+  // Forward the altTarget to the follower system
+  useEffect(() => {
+    setAltTarget(id, altTarget);
+  }, [altTarget, id, setAltTarget]);
 
   // A callback ref that always re-points the follower to the latest DOM node
   const last = useRef<T | null>(null);
-  return useCallback((node: T | null) => {
+  const setTargetRef = useCallback((node: T | null) => {
     last.current = node;
-    setReference(id, node, followerContent);
-  }, [setReference, id, followerContent]);
+    setTargetReference(id, node);
+  }, [setTargetReference, id]);
+
+  return setTargetRef;
+}
+
+interface FollowPortalProps<T extends HTMLElement> {
+  id: string;
+  TargetComponent: React.FC<{ id: string, targetRef: Ref<T> }>;
+  altTarget?: AltTarget;
+  children: ReactNode;
+}
+// This component takes the children and forwards it to be rendered into its Follower, and renders the Target component as its real child.
+export const FollowPortal = <T extends HTMLElement>({ id, TargetComponent, children, altTarget }: FollowPortalProps<T>) => {
+  // Send children to the follower system
+  const targetRef = useFollowerTargetRef<T>(id, children, altTarget);
+  // Mark the target with a ref
+  return <TargetComponent key={`target-${id}`} id={id} targetRef={targetRef} />;
 }
