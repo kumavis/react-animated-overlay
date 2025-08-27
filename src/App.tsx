@@ -47,7 +47,41 @@ const TargetRepresentation: React.FC<{ id: string, targetRef: React.Ref<HTMLDivE
 }
 
 function AppContent() {
-  const [currentDemo, setCurrentDemo] = useState<'follower' | 'inertial'>('follower');
+  // Get initial demo from URL hash, defaulting to 'follower'
+  const getInitialDemo = (): 'follower' | 'inertial' => {
+    const hash = window.location.hash.slice(1);
+    if (hash === 'inertial' || hash === 'follower') {
+      return hash;
+    }
+    return 'follower';
+  };
+
+  const [currentDemo, setCurrentDemo] = useState<'follower' | 'inertial'>(getInitialDemo);
+
+  // Update URL when demo changes
+  const updateURL = (demo: 'follower' | 'inertial') => {
+    window.location.hash = demo;
+  };
+
+  // Handle demo change
+  const handleDemoChange = (demo: 'follower' | 'inertial') => {
+    setCurrentDemo(demo);
+    updateURL(demo);
+  };
+
+  // Listen for hash changes (e.g., browser back/forward buttons)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1);
+      if (hash === 'inertial' || hash === 'follower') {
+        setCurrentDemo(hash);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   const [targets, setTargets] = useState<Target[]>(() => {
     const now = Date.now();
     return [
@@ -184,16 +218,18 @@ function AppContent() {
     <div className="App">
       <header className="App-header">
         <h1>Floating UI Demos</h1>
+        
+
 
         <div className="demo-navigation">
           <button
-            onClick={() => setCurrentDemo('follower')}
+            onClick={() => handleDemoChange('follower')}
             className={`nav-button ${currentDemo === 'follower' ? 'active' : ''}`}
           >
             Follower System Demo
           </button>
           <button
-            onClick={() => setCurrentDemo('inertial')}
+            onClick={() => handleDemoChange('inertial')}
             className={`nav-button ${currentDemo === 'inertial' ? 'active' : ''}`}
           >
             Inertial Floating Demo
@@ -214,9 +250,11 @@ function AppContent() {
 
         {currentDemo === 'inertial' && (
           <p>
-            This demo shows how to use Framer Motion for an inertial animation for the Follower.
+            This demo shows how to use the FollowerSystem with inertial mode enabled.
             <br />
-            Click to move the target and watch the panel follow with smooth inertia. Click in a triangle shape to see the smooth motion curves.
+            Click to move the target and watch the panel follow with smooth inertia. The FollowerSystem now supports both regular transitions and inertial animations.
+            <br />
+
           </p>
         )}
 

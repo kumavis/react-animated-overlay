@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactNode, Ref, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useFloating, autoUpdate, offset, useTransitionStatus } from "@floating-ui/react";
+import { motion, useSpring } from "framer-motion";
 
 type FollowTarget = HTMLElement | null;
 type AltTarget = { x: number, y: number };
@@ -15,6 +16,8 @@ type FollowerCtxType = {
   getFollowerContent: (id: string) => ReactNode | null;
   setAltTarget: (id: string, altTarget: AltTarget | undefined) => void;
   getAltTarget: (id: string) => AltTarget | undefined;
+  setInertialMode: (id: string, useInertial: boolean) => void;
+  getInertialMode: (id: string) => boolean;
 }
 
 const FollowerCtx = createContext<FollowerCtxType | null>(null);
@@ -27,13 +30,19 @@ interface FollowerProps {
 }
 // Internal Follower component that follows a target element (or alternate target)
 const Follower = ({ id, getFollowTargetElement, altTarget, children }: FollowerProps) => {
+  const followerContext = useContext(FollowerCtx);
+  if (!followerContext) throw new Error("Wrap your app with <FollowerProvider/>");
+  const { getInertialMode } = followerContext;
+  const useInertial = getInertialMode(id);
   const isInitiallyPositioned = useRef(false);
   const followEntry = getFollowTargetElement(id);
-  const shouldBeVisible = !!followEntry;
+  const shouldBeVisible = !!followEntry || !!altTarget;
   const shouldAnimate = shouldBeVisible && isInitiallyPositioned.current;
 
+
+
   // Configure floating-ui system
-  const { refs, floatingStyles, context, elements } = useFloating({
+  const { refs, floatingStyles, context, elements, x, y } = useFloating({
     open: shouldBeVisible,
     strategy: "fixed",
     placement: "bottom-start",
@@ -45,6 +54,19 @@ const Follower = ({ id, getFollowTargetElement, altTarget, children }: FollowerP
   });
   const { status } = useTransitionStatus(context);
   const isOpen = status === "open";
+
+  // Inertial springs for smooth movement
+  const stiffness = 3;
+  const damping = 3;
+  const mass = 1;
+  const springX = useSpring(0, { stiffness, damping, mass });
+  const springY = useSpring(0, { stiffness, damping, mass });
+
+  // Update spring targets when Floating UI position changes
+  useEffect(() => {
+    if (useInertial && typeof x === "number") springX.set(x);
+    if (useInertial && typeof y === "number") springY.set(y);
+  }, [x, y, springX, springY, useInertial]);
 
   // After the first open, mark as initially positioned
   useEffect(() => {
@@ -88,14 +110,36 @@ const Follower = ({ id, getFollowTargetElement, altTarget, children }: FollowerP
     }
   }, [refs, id, getFollowTargetElement]);
 
+  const baseStyles = {
+    ...floatingStyles,
+    transition: shouldAnimate && !useInertial ? "all 0.3s ease-in-out" : "none",
+  };
+
+  console.log("baseStyles", baseStyles);
+
+  if (useInertial) {
+    return shouldBeVisible && (
+      <motion.div
+        key={id}
+        ref={refs.setFloating}
+        style={{
+          ...baseStyles,
+          top: springY,
+          left: springX,
+          transform: "none",
+          willChange: "top, left",
+        }}
+      >
+        {children}
+      </motion.div>
+    ) || null;
+  }
+
   return shouldBeVisible && (
     <div
       key={id}
       ref={refs.setFloating}
-      style={{
-        ...floatingStyles,
-        transition: shouldAnimate ? "all 0.3s ease-in-out" : "none",
-      }}
+      style={baseStyles}
     >
       {children}
     </div>
@@ -146,6 +190,19 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
     return altTargets.get(id);
   }, [altTargets]);
 
+  // Stores the inertial mode for each follower
+  const [inertialModes, setInertialModes] = useState<Map<string, boolean>>(new Map());
+  const setInertialMode = useCallback((id: string, useInertial: boolean) => {
+    setInertialModes(prev => {
+      const newMap = new Map(prev);
+      newMap.set(id, useInertial);
+      return newMap;
+    });
+  }, []);
+  const getInertialMode = useCallback((id: string) => {
+    return inertialModes.get(id) || false;
+  }, [inertialModes]);
+
   // Stores the Follower content ReactNode. Non-observable, doesn't trigger changes.
   const followerContentRefs = useRef<Map<string, FollowerContent>>(new Map());
   const getFollowerContext = useCallback((id: string) => {
@@ -167,7 +224,9 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
     getFollowerContent: getFollowerContext,
     setAltTarget,
     getAltTarget,
-  }), [setTargetReference, getFollowEntry, setFollowerContext, getFollowerContext]);
+    setInertialMode,
+    getInertialMode,
+  }), [setTargetReference, getFollowEntry, setFollowerContext, getFollowerContext, setAltTarget, getAltTarget, setInertialMode, getInertialMode]);
 
   return (
     <FollowerCtx.Provider value={contextValue}>
@@ -187,10 +246,10 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
 }
 
 // Internal hook for connecting the Targer and Follower components via the Provider
-const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: ReactNode, altTarget?: AltTarget) => {
+const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: ReactNode, altTarget?: AltTarget, useInertial?: boolean) => {
   const context = useContext(FollowerCtx);
   if (!context) throw new Error("Wrap your app with <FollowerProvider/>");
-  const { setTargetReference, setFollowerContent: setFollowerContext, setAltTarget } = context;
+  const { setTargetReference, setFollowerContent: setFollowerContext, setAltTarget, setInertialMode } = context;
 
   // Send the children to get rendered in the portal
   setFollowerContext(id, children);
@@ -199,6 +258,11 @@ const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: React
   useEffect(() => {
     setAltTarget(id, altTarget);
   }, [altTarget, id, setAltTarget]);
+
+  // Set the inertial mode for this follower
+  useEffect(() => {
+    setInertialMode(id, useInertial || false);
+  }, [useInertial, id, setInertialMode]);
 
   // A callback ref that always re-points the follower to the latest DOM node
   const last = useRef<T | null>(null);
@@ -212,14 +276,15 @@ const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: React
 
 interface FollowPortalProps<T extends HTMLElement> {
   id: string;
-  TargetComponent: React.FC<{ id: string, targetRef: Ref<T> }>;
+  TargetComponent?: React.FC<{ id: string, targetRef: Ref<T> }>;
   altTarget?: AltTarget;
+  useInertial?: boolean;
   children: ReactNode;
 }
 // This component takes the children and forwards it to be rendered into its Follower, and renders the Target component as its real child.
-export const FollowPortal = <T extends HTMLElement>({ id, TargetComponent, children, altTarget }: FollowPortalProps<T>) => {
+export const FollowPortal = <T extends HTMLElement>({ id, TargetComponent, children, altTarget, useInertial }: FollowPortalProps<T>) => {
   // Send children to the follower system
-  const targetRef = useFollowerTargetRef<T>(id, children, altTarget);
+  const targetRef = useFollowerTargetRef<T>(id, children, altTarget, useInertial);
   // Mark the target with a ref
-  return <TargetComponent key={`target-${id}`} id={id} targetRef={targetRef} />;
+  return TargetComponent ? <TargetComponent key={`target-${id}`} id={id} targetRef={targetRef} /> : null;
 }
