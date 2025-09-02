@@ -32,7 +32,7 @@ const FollowerCtx = createContext<FollowerCtxType | null>(null);
 const useFollowerState = (id: string, subscribeToTarget: SubscribeToTarget, subscribeToAltTarget: SubscribeToAltTarget) => {
   const followerContext = useContext(FollowerCtx);
   if (!followerContext) throw new Error("Wrap your app with <FollowerProvider/>");
-  const { getInertialMode, getSpringConfig, cleanupFollower } = followerContext;
+  const { getInertialMode, getSpringConfig } = followerContext;
   const useInertial = getInertialMode(id);
   const isInitiallyPositioned = useRef(false);
   const [followEntry, setFollowEntry] = useState<FollowTarget | null>(null);
@@ -57,7 +57,7 @@ const useFollowerState = (id: string, subscribeToTarget: SubscribeToTarget, subs
   }, [id, subscribeToAltTarget]);
 
   // Configure floating-ui system
-  const { refs, floatingStyles, context, elements, x, y } = useFloating({
+  const { refs, floatingStyles, context, x, y } = useFloating({
     open: shouldBeVisible,
     strategy: "fixed",
     placement: "bottom-start",
@@ -106,7 +106,7 @@ const useFollowerState = (id: string, subscribeToTarget: SubscribeToTarget, subs
       const targetElement = followEntry || null;
       refs.setReference(targetElement);
     }
-  }, [altTarget, followEntry]);
+  }, [altTarget, followEntry, refs]);
 
   // Get the current target element and update the reference
   // TODO: This is likely unnecessary indirection and the reference could be set directly.
@@ -349,7 +349,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
     };
   }, []);
 
-  const contextValue = useMemo<FollowerCtxType>(() => ({
+  const contextValue: FollowerCtxType = {
     setTargetReference,
     subscribeToTarget,
     subscribeToAltTarget,
@@ -411,15 +411,16 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
       targetSubscribers.current.delete(id);
       altTargetSubscribers.current.delete(id);
     },
-  }), []); // Empty dependency array - context value never changes
+  };
 
   // Cleanup all timeouts on unmount
   useEffect(() => {
     return () => {
-      timeoutRefs.current.forEach((timeoutId) => {
+      const currentTimeoutRefs = timeoutRefs.current;
+      currentTimeoutRefs.forEach((timeoutId) => {
         clearTimeout(timeoutId);
       });
-      timeoutRefs.current.clear();
+      currentTimeoutRefs.clear();
     };
   }, []);
 
@@ -448,7 +449,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
 const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: ReactNode, altTarget?: AltTarget, useInertial?: boolean, springConfig?: { stiffness?: number; damping?: number; mass?: number }) => {
   const context = useContext(FollowerCtx);
   if (!context) throw new Error("Wrap your app with <FollowerProvider/>");
-  const { setTargetReference, setFollowerContent, setAltTarget, setInertialMode, setSpringConfig, cleanupFollower } = context;
+  const { setTargetReference, setFollowerContent, setAltTarget, setInertialMode, setSpringConfig } = context;
 
   // This causes the app to break.
   // // Cleanup when component unmounts

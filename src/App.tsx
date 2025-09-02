@@ -211,11 +211,7 @@ function AppContent() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Floating UI Demos</h1>
-
-
-
-
+        <h1>Floating UI Demo</h1>
 
         <div style={{
           maxWidth: '800px',
@@ -226,9 +222,9 @@ function AppContent() {
           <p style={{ marginBottom: '16px' }}>
             This is a demonstration of a <strong>floating follower system</strong> in React. Content is rendered into the Follower, which is repositioned above the Target (usually invisible).
           </p>
-          
+
           <details>
-            <summary style={{ 
+            <summary style={{
               cursor: 'pointer',
               fontWeight: '600',
               color: '#ffffff',
@@ -237,7 +233,7 @@ function AppContent() {
             }}>
               Read more
             </summary>
-            
+
             <div style={{
               color: '#ffffff',
               marginTop: '16px',
@@ -249,15 +245,15 @@ function AppContent() {
               <p style={{ marginBottom: '16px' }}>
                 If the Target is repositioned or even rendered into a different part of the DOM tree, the Follower follows it seamlessly, without tearing down or recreating components.
               </p>
-              
+
               <p style={{ marginBottom: '16px' }}>
                 <strong>Key Innovation:</strong> The Follower content is defined where you want it to appear, so it has the relevant local context, despite being rendered into an overlay layer.
               </p>
-              
+
               <p style={{ marginBottom: '16px' }}>
                 You may also want to position the Follower at an arbitrary position on the screen. Use the <code style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>altTarget</code> prop to specify an arbitrary point to follow. This is useful for animations that are not triggered by the target's movement. <em>Try clicking anywhere on the page to see it in action!</em>
               </p>
-              
+
               <p style={{ marginBottom: '0' }}>
                 <strong>Animation Options:</strong> By default, a simple CSS transition is applied to the follower. Toggle the <strong>Inertial</strong> button above to see smooth spring-based animations with configurable physics parameters.
               </p>
