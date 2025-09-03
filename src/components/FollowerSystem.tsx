@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactNode, Ref, useMemo, CSSProperties } from "react";
+import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactNode, Ref, CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useFloating, autoUpdate, offset, useTransitionStatus } from "@floating-ui/react";
 import { motion, useSpring } from "framer-motion";
@@ -416,11 +416,12 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
   // Cleanup all timeouts on unmount
   useEffect(() => {
     return () => {
-      const currentTimeoutRefs = timeoutRefs.current;
-      currentTimeoutRefs.forEach((timeoutId) => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const timeoutRefsValue = timeoutRefs.current;
+      timeoutRefsValue.forEach((timeoutId) => {
         clearTimeout(timeoutId);
       });
-      currentTimeoutRefs.clear();
+      timeoutRefsValue.clear();
     };
   }, []);
 
