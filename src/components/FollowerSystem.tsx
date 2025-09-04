@@ -7,10 +7,24 @@ type FollowTarget = HTMLElement | null;
 type AltTarget = { x: number, y: number };
 type FollowerContent = ReactNode | null;
 
+// State types for follower data that can be managed via setFollowerState
+type FollowerState = {
+  inertialMode?: boolean;
+  springConfig?: { stiffness?: number; damping?: number; mass?: number };
+};
+
+// Updater function type for setFollowerState
+type FollowerStateUpdater = (prevState: FollowerState) => FollowerState;
+
 // Context that lets any Target register itself as a reference
 type SetRef = (id: string, el: HTMLElement | null) => void;
 type SubscribeToTarget = (id: string, callback: (target: FollowTarget | null) => void) => () => void;
 type SubscribeToAltTarget = (id: string, callback: (altTarget: AltTarget | undefined) => void) => () => void;
+type SubscribeToFollowerState = (id: string, callback: (state: FollowerState) => void) => () => void;
+
+// setFollowerState function type - accepts object or updater function
+type SetFollowerState = (id: string, stateOrUpdater: FollowerState | FollowerStateUpdater) => void;
+
 type FollowerCtxType = {
   setTargetReference: SetRef;
   subscribeToTarget: SubscribeToTarget;
@@ -19,21 +33,40 @@ type FollowerCtxType = {
   getFollowerContent: (id: string) => ReactNode | null;
   setAltTarget: (id: string, altTarget: AltTarget | undefined) => void;
   getAltTarget: (id: string) => AltTarget | undefined;
-  setInertialMode: (id: string, useInertial: boolean) => void;
-  getInertialMode: (id: string) => boolean;
-  setSpringConfig: (id: string, config: { stiffness?: number; damping?: number; mass?: number }) => void;
-  getSpringConfig: (id: string) => { stiffness?: number; damping?: number; mass?: number };
+  setFollowerState: SetFollowerState;
+  getFollowerState: (id: string) => FollowerState;
+  subscribeFollowerState: SubscribeToFollowerState;
   cleanupFollower: (id: string) => void;
 }
 
 const FollowerCtx = createContext<FollowerCtxType | null>(null);
 
+// Hook for subscribing to follower state changes
+export const useFollowerState = (id: string) => {
+  const context = useContext(FollowerCtx);
+  if (!context) throw new Error("Wrap your app with <FollowerProvider/>");
+  const { getFollowerState, subscribeFollowerState } = context;
+  
+  const [state, setState] = useState<FollowerState>(() => getFollowerState(id));
+  
+  useEffect(() => {
+    const unsubscribe = subscribeFollowerState(id, (newState) => {
+      setState(newState);
+    });
+    return unsubscribe;
+  }, [id, subscribeFollowerState]);
+  
+  return state;
+};
+
 // Internal hook for managing the follower state
-const useFollowerState = (id: string, subscribeToTarget: SubscribeToTarget, subscribeToAltTarget: SubscribeToAltTarget) => {
+const useFollowerStateInternal = (id: string, subscribeToTarget: SubscribeToTarget, subscribeToAltTarget: SubscribeToAltTarget) => {
   const followerContext = useContext(FollowerCtx);
   if (!followerContext) throw new Error("Wrap your app with <FollowerProvider/>");
-  const { getInertialMode, getSpringConfig } = followerContext;
-  const useInertial = getInertialMode(id);
+  const { getFollowerState } = followerContext;
+  
+  const followerState = getFollowerState(id);
+  const useInertial = followerState.inertialMode || false;
   const isInitiallyPositioned = useRef(false);
   const [followEntry, setFollowEntry] = useState<FollowTarget | null>(null);
   const [altTarget, setAltTarget] = useState<AltTarget | undefined>(undefined);
@@ -116,7 +149,7 @@ const useFollowerState = (id: string, subscribeToTarget: SubscribeToTarget, subs
     }
   }, [refs, followEntry]);
 
-  return { refs, floatingStyles, x, y, shouldAnimate, useInertial, shouldBeVisible, getSpringConfig };
+  return { refs, floatingStyles, x, y, shouldAnimate, useInertial, shouldBeVisible, getSpringConfig: () => followerState.springConfig || {} };
 }
 
 interface SpringFollowerProps {
@@ -165,14 +198,15 @@ interface FollowerProps {
 const Follower = ({ id, subscribeToTarget, subscribeToAltTarget, children }: FollowerProps) => {
   const followerContext = useContext(FollowerCtx);
   if (!followerContext) throw new Error("Wrap your app with <FollowerProvider/>");
-  const { getSpringConfig } = followerContext;
+  const { getFollowerState } = followerContext;
 
-  const { refs, floatingStyles, x, y, shouldAnimate, useInertial, shouldBeVisible } = useFollowerState(id, subscribeToTarget, subscribeToAltTarget);
+  const { refs, floatingStyles, x, y, shouldAnimate, useInertial, shouldBeVisible } = useFollowerStateInternal(id, subscribeToTarget, subscribeToAltTarget);
 
   if (!shouldBeVisible) return null;
 
   if (useInertial) {
-    const springConfig = getSpringConfig(id);
+    const followerState = getFollowerState(id);
+    const springConfig = followerState.springConfig || {};
     return <SpringFollower
       id={id}
       children={children}
@@ -204,12 +238,14 @@ interface FollowerProviderProps {
 // This component is the root of the follower system. It manages the target elements and their followers.
 export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) => {
   // console.log("FollowerProvider rendered");
-  // Store all data in refs to avoid rerenders
+  // Store follower state data (inertialMode, springConfig) in a ref Map to avoid rerenders
+  const followerStates = useRef<Map<string, FollowerState>>(new Map());
+  
+  // Store other data separately since they have special side effects
   const followTargets = useRef<Map<string, FollowTarget>>(new Map());
-  const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const altTargets = useRef<Map<string, AltTarget>>(new Map());
-  const inertialModes = useRef<Map<string, boolean>>(new Map());
-  const springConfigs = useRef<Map<string, { stiffness?: number; damping?: number; mass?: number }>>(new Map());
+  const followerContentRefs = useRef<Map<string, FollowerContent>>(new Map());
+  const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Store subscribers for target changes
   const targetSubscribers = useRef<Map<string, Set<(target: FollowTarget | null) => void>>>(new Map());
@@ -217,10 +253,65 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
   // Store subscribers for altTarget changes
   const altTargetSubscribers = useRef<Map<string, Set<(altTarget: AltTarget | undefined) => void>>>(new Map());
 
-  // Store follower content and track which ones are active
-  const followerContentRefs = useRef<Map<string, FollowerContent>>(new Map());
+  // Store subscribers for follower state changes
+  const followerStateSubscribers = useRef<Map<string, Set<(state: FollowerState) => void>>>(new Map());
+
+  // Track which followers are active
   const [activeFollowerIds, setActiveFollowerIds] = useState<Set<string>>(new Set());
 
+  // setFollowerState function - accepts object or updater function like React useState
+  const setFollowerState: SetFollowerState = useCallback((id: string, stateOrUpdater: FollowerState | FollowerStateUpdater) => {
+    const currentState = followerStates.current.get(id) || {};
+    const newState = typeof stateOrUpdater === 'function' 
+      ? stateOrUpdater(currentState)
+      : stateOrUpdater; // React useState replaces the entire state, doesn't merge
+    
+    followerStates.current.set(id, newState);
+    
+    // Notify subscribers of the state change
+    const subscribers = followerStateSubscribers.current.get(id);
+    if (subscribers) {
+      subscribers.forEach(callback => callback(newState));
+    }
+  }, []);
+
+  // Specific setter for followerContent (has special side effects)
+  const setFollowerContent = useCallback((id: string, content: ReactNode | null) => {
+    if (content) {
+      followerContentRefs.current.set(id, content);
+      setActiveFollowerIds(prev => {
+        if (prev.has(id)) return prev;
+        const newSet = new Set(prev);
+        newSet.add(id);
+        return newSet;
+      });
+    } else {
+      followerContentRefs.current.delete(id);
+      setActiveFollowerIds(prev => {
+        if (!prev.has(id)) return prev;
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }
+  }, []);
+
+  // Specific setter for altTarget (has special side effects)
+  const setAltTarget = useCallback((id: string, altTarget: AltTarget | undefined) => {
+    if (altTarget) {
+      altTargets.current.set(id, altTarget);
+    } else {
+      altTargets.current.delete(id);
+    }
+
+    // Notify subscribers of the altTarget change
+    const subscribers = altTargetSubscribers.current.get(id);
+    if (subscribers) {
+      subscribers.forEach(callback => callback(altTarget));
+    }
+  }, []);
+
+  // Specific setter for followTarget (has special side effects)
   const setTargetReference: SetRef = useCallback((id: string, followTargetElement: FollowTarget) => {
     // console.log("setTargetReference", id, !!followTargetElement);
 
@@ -232,10 +323,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
         // Clean up all stored data for this follower
         followTargets.current.delete(id);
         altTargets.current.delete(id);
-        inertialModes.current.delete(id);
-        springConfigs.current.delete(id);
-
-        // Clean up follower content
+        followerStates.current.delete(id);
         followerContentRefs.current.delete(id);
         setActiveFollowerIds(prev => {
           const newSet = new Set(prev);
@@ -249,6 +337,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
         // Clean up subscribers
         targetSubscribers.current.delete(id);
         altTargetSubscribers.current.delete(id);
+        followerStateSubscribers.current.delete(id);
       }, 200);
 
       timeoutRefs.current.set(id, timeoutId);
@@ -277,28 +366,17 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
     }
   }, []);
 
+  // Getter functions
+  const getFollowerState = useCallback((id: string): FollowerState => {
+    return followerStates.current.get(id) || {};
+  }, []);
+
   const getFollowerContent = useCallback((id: string) => {
     return followerContentRefs.current.get(id);
   }, []);
 
-  const setFollowerContent = useCallback((id: string, content: ReactNode | null) => {
-    if (content) {
-      followerContentRefs.current.set(id, content);
-      setActiveFollowerIds(prev => {
-        if (prev.has(id)) return prev;
-        const newSet = new Set(prev);
-        newSet.add(id);
-        return newSet;
-      });
-    } else {
-      followerContentRefs.current.delete(id);
-      setActiveFollowerIds(prev => {
-        if (!prev.has(id)) return prev;
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
-      });
-    }
+  const getAltTarget = useCallback((id: string) => {
+    return altTargets.current.get(id);
   }, []);
 
   // Subscribe to target changes for each follower
@@ -349,40 +427,41 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
     };
   }, []);
 
+  // Subscribe to follower state changes
+  const subscribeFollowerState = useCallback((id: string, callback: (state: FollowerState) => void) => {
+    // Add subscriber
+    if (!followerStateSubscribers.current.has(id)) {
+      followerStateSubscribers.current.set(id, new Set());
+    }
+    followerStateSubscribers.current.get(id)!.add(callback);
+
+    // Immediately call with current state
+    const currentState = followerStates.current.get(id) || {};
+    callback(currentState);
+
+    // Return unsubscribe function
+    return () => {
+      const subscribers = followerStateSubscribers.current.get(id);
+      if (subscribers) {
+        subscribers.delete(callback);
+        if (subscribers.size === 0) {
+          followerStateSubscribers.current.delete(id);
+        }
+      }
+    };
+  }, []);
+
   const contextValue: FollowerCtxType = {
     setTargetReference,
     subscribeToTarget,
     subscribeToAltTarget,
     setFollowerContent,
     getFollowerContent,
-    setAltTarget: (id: string, altTarget: AltTarget | undefined) => {
-      if (altTarget) {
-        altTargets.current.set(id, altTarget);
-      } else {
-        altTargets.current.delete(id);
-      }
-
-      // Notify subscribers of the altTarget change
-      const subscribers = altTargetSubscribers.current.get(id);
-      if (subscribers) {
-        subscribers.forEach(callback => callback(altTarget));
-      }
-    },
-    getAltTarget: (id: string) => {
-      return altTargets.current.get(id);
-    },
-    setInertialMode: (id: string, useInertial: boolean) => {
-      inertialModes.current.set(id, useInertial);
-    },
-    getInertialMode: (id: string) => {
-      return inertialModes.current.get(id) || false;
-    },
-    setSpringConfig: (id: string, config: { stiffness?: number; damping?: number; mass?: number }) => {
-      springConfigs.current.set(id, config);
-    },
-    getSpringConfig: (id: string) => {
-      return springConfigs.current.get(id) || {};
-    },
+    setAltTarget,
+    getAltTarget,
+    setFollowerState,
+    getFollowerState,
+    subscribeFollowerState,
     cleanupFollower: (id: string) => {
       // console.log("cleanupFollower", id);
 
@@ -396,10 +475,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
       // Clean up all stored data for this follower
       followTargets.current.delete(id);
       altTargets.current.delete(id);
-      inertialModes.current.delete(id);
-      springConfigs.current.delete(id);
-
-      // Clean up follower content
+      followerStates.current.delete(id);
       followerContentRefs.current.delete(id);
       setActiveFollowerIds(prev => {
         const newSet = new Set(prev);
@@ -410,6 +486,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
       // Clean up subscribers
       targetSubscribers.current.delete(id);
       altTargetSubscribers.current.delete(id);
+      followerStateSubscribers.current.delete(id);
     },
   };
 
@@ -431,7 +508,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
       {createPortal(
         <div>
           {Array.from(activeFollowerIds).map((id) => {
-            const content = followerContentRefs.current.get(id);
+            const content = getFollowerContent(id);
             if (!content) return null;
             return (
               <Follower key={id} id={id} subscribeToTarget={subscribeToTarget} subscribeToAltTarget={contextValue.subscribeToAltTarget}>
@@ -450,16 +527,7 @@ export const FollowerProvider: React.FC<FollowerProviderProps> = ({ children }) 
 const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: ReactNode, altTarget?: AltTarget, useInertial?: boolean, springConfig?: { stiffness?: number; damping?: number; mass?: number }) => {
   const context = useContext(FollowerCtx);
   if (!context) throw new Error("Wrap your app with <FollowerProvider/>");
-  const { setTargetReference, setFollowerContent, setAltTarget, setInertialMode, setSpringConfig } = context;
-
-  // This causes the app to break.
-  // // Cleanup when component unmounts
-  // useEffect(() => {
-  //   return () => {
-  //     console.log("cleanupFollower", id);
-  //     cleanupFollower(id);
-  //   };
-  // }, [id, cleanupFollower]);
+  const { setFollowerContent, setAltTarget, setFollowerState, setTargetReference } = context;
 
   // Send the children to get rendered in the portal
   useEffect(() => {
@@ -473,13 +541,13 @@ const useFollowerTargetRef = <T extends HTMLElement>(id: string, children: React
 
   // Set the inertial mode for this follower
   useEffect(() => {
-    setInertialMode(id, useInertial || false);
-  }, [useInertial, id, setInertialMode]);
+    setFollowerState(id, (prev) => ({ ...prev, inertialMode: useInertial || false }));
+  }, [useInertial, id, setFollowerState]);
 
   // Set the spring configuration for this follower
   useEffect(() => {
-    setSpringConfig(id, springConfig || {});
-  }, [springConfig, id, setSpringConfig]);
+    setFollowerState(id, (prev) => ({ ...prev, springConfig: springConfig || {} }));
+  }, [springConfig, id, setFollowerState]);
 
   // A callback ref that always re-points the follower to the latest DOM node
   const last = useRef<T | null>(null);

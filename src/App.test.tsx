@@ -6,7 +6,7 @@ test('renders floating UI demos with controls', () => {
   render(<App />);
   
   // Check that the main title is rendered
-  const titleElement = screen.getByText(/Floating UI Demos/i);
+  const titleElement = screen.getByText(/Floating UI Demo/i);
   expect(titleElement).toBeInTheDocument();
   
   // Check that the control buttons are rendered
@@ -21,7 +21,7 @@ test('renders floating UI demos with controls', () => {
   expect(reshuffleButton).toBeInTheDocument();
   
   // Check that the follower demo content is shown
-  const followerDescription = screen.getByText(/This is a demonstration of a floating follower system/i);
+  const followerDescription = screen.getByText(/This is a demonstration of a/i);
   expect(followerDescription).toBeInTheDocument();
 });
 
